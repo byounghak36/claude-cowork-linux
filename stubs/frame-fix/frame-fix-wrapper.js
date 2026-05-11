@@ -1025,6 +1025,21 @@ Module.prototype.require = function(id) {
         if (typeof app.setName === 'function') {
           app.setName('Claude');
         }
+        // Stub macOS-only NSUserActivity/Handoff methods that crash on Linux
+        // because we spoof darwin but these functions don't exist in Linux Electron.
+        const macOnlyAppMethods = [
+          'invalidateCurrentActivity',
+          'updateCurrentActivity',
+          'setCurrentActivity',
+          'getCurrentActivityType',
+          'resignCurrentActivity',
+        ];
+        for (const m of macOnlyAppMethods) {
+          if (typeof app[m] !== 'function') {
+            app[m] = function() {};
+          }
+        }
+        console.log('[Frame Fix] macOS-only NSUserActivity methods stubbed for Linux');
       }
     }
 
