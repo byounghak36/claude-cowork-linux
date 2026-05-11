@@ -127,6 +127,31 @@ if [ -f "$INDEX_JS" ] && grep -qE '[a-zA-Z_$][a-zA-Z0-9_$]*\.app\.isPackaged\?pr
   sed -i -E 's/[a-zA-Z_$][a-zA-Z0-9_$]*\.app\.isPackaged\?process\.resourcesPath://g' "$INDEX_JS"
 fi
 
+# ============================================================
+# Fix node-pty: the extracted DMG contains macOS Mach-O binaries for
+# node-pty. Replace with Linux ELF binaries built against current Electron.
+# ============================================================
+_PTY_NODE="linux-app-extracted/node_modules/node-pty/build/Release/pty.node"
+if [[ -f "$_PTY_NODE" ]] && file "$_PTY_NODE" 2>/dev/null | grep -q "Mach-O"; then
+  echo "Rebuilding node-pty for Linux (Electron $("$ELECTRON_BIN" --version 2>/dev/null | tr -d v))..."
+  _ELECTRON_VER="$("$ELECTRON_BIN" --version 2>/dev/null | tr -d v)"
+  _PTY_TMP="$(mktemp -d)"
+  (
+    cd "$_PTY_TMP"
+    npm init -y --silent >/dev/null 2>&1
+    npm install --save "node-pty@$(node -e "console.log(require('$(pwd -P)/../../linux-app-extracted/node_modules/node-pty/package.json').version)" 2>/dev/null || echo '1.1.0-beta34')" --silent 2>&1 | tail -2
+    npx electron-rebuild -v "$_ELECTRON_VER" -w node-pty 2>&1 | tail -3
+    if [[ -f "node_modules/node-pty/build/Release/pty.node" ]]; then
+      cp "node_modules/node-pty/build/Release/pty.node" "$SCRIPT_DIR/$_PTY_NODE"
+      rm -f "$SCRIPT_DIR/linux-app-extracted/node_modules/node-pty/build/Release/spawn-helper"
+      echo "node-pty rebuilt successfully for Linux"
+    else
+      echo "WARN: node-pty rebuild failed — terminal backend may not work"
+    fi
+  )
+  rm -rf "$_PTY_TMP"
+fi
+
 # Only repack if stub is newer than asar (or asar doesn't exist)
 # Repack if any file in the extracted tree is newer than the cached asar.
 _needs_repack=false
